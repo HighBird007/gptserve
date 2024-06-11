@@ -28,17 +28,13 @@ void tcpsocket::runwork()
             receiverequest(doc);
             date.clear();
         }
-
     });
     connect(socket,&QTcpSocket::disconnected,this,[=](){
         deleteLater();
         emit whathappen("over");
         emit disconnectsocket();
     });
-    QJsonObject a;
-    a["type"]="error";
-    a["content"]="hello";
-    socket->write(QJsonDocument(a).toJson());
+
     manager=new QNetworkAccessManager;
     if(!db.open())qDebug()<<db.lastError().text();
 }
@@ -51,7 +47,6 @@ void tcpsocket::receiverequest(QJsonDocument doc){
     if(type=="chat")useraskcontent(obj);
 
     if(type=="history")userneedhistorymess(obj);
-
 
 }
 
@@ -72,16 +67,17 @@ void tcpsocket::userlogin(QJsonObject obj)
     QJsonObject login;
     login["type"]="login";
     if(query.next()){
-        id =   query.record().value(0).toInt();
+        id = query.record().value(0).toInt();
+        account = query.record().value(1).toString();
         login["content"]=true;
     }else {
         login["content"]=false;
     }
-    socket->write(QJsonDocument(login).toJson());
+    socket->write(QJsonDocument(login).toJson()+"LxTcpOverTag");
 }
 //用户使用函数
 void tcpsocket::useraskcontent(QJsonObject obj)
-{   qDebug()<<obj;
+{
     QString content = obj["data"].toObject()
                           ["messages"].toArray()
                                   .last().toObject()
@@ -95,28 +91,58 @@ void tcpsocket::useraskcontent(QJsonObject obj)
     QNetworkRequest r(QUrl("https://api.aigcapi.io/v1/chat/completions"));
     r.setHeader(QNetworkRequest::ContentTypeHeader,"application/json");
     r.setRawHeader("Authorization","sk-KoGGLsgRmJcnGbNR5412722fE3264a8e875eB5D177118dA3");
+    QString currentDate = QDate::currentDate().toString("yyyy-MM-dd");
+    QSqlQuery q(db);
+    q.prepare("INSERT INTO chat_usage (account,chat_count,DATE) "
+                  "VALUES (:user_id, 1, :date) "
+                  "ON DUPLICATE KEY UPDATE chat_count = chat_count + 1");
+    q.bindValue(":user_id", account);
+    q.bindValue(":date", currentDate);
+    if (!q.exec()) {
+        qDebug() << "Error incrementing chat usage:" << q.lastError().text();
+    } else {
+        qDebug() << "Chat usage incremented successfully for user" << account;
+    }
     QNetworkReply * reply = manager->post(r,QJsonDocument(obj["data"].toObject()).toJson());
     connect(reply,&QNetworkReply::readyRead,reply,[=](){
-        QJsonDocument doc=QJsonDocument::fromJson(reply->readAll());
-        QJsonObject o =doc .object();
-        qDebug()<<o;
-        o.insert("type","chat");
-        QJsonArray choicesArray = o["choices"].toArray();
-        // 获取第一个选择项
-        QJsonObject choiceObject = choicesArray[0].toObject();
-        // 获取message对象
-        QJsonObject messageObject = choiceObject["message"].toObject();
-        // 获取content字段中的聊天内容
-        QString chatContent = messageObject["content"].toString();
-        qDebug()<<chatContent;
-        emit whathappen("openai:"+chatContent);
-        query.prepare("insert into chatmessages(user_id , message_content ,peoormac)values(:user_id,:messagecontent,:p)");
-        query.bindValue(":user_id",id);
-        query.bindValue(":messagecontent",chatContent);
-        query.bindValue(":p",1);
-        query.exec();
-        socket->write(QJsonDocument(o).toJson());
-        reply->deleteLater();
+        if (reply) {
+            QByteArray data = reply->readAll();
+            QList<QByteArray> lines = data.split('\n');
+            for (const QByteArray &line : lines) {
+                if (line.startsWith("data: ")) {
+                    QByteArray jsonData = line.mid(6).trimmed();
+                    if (!jsonData.isEmpty() && jsonData != "[DONE]") {
+                        QJsonDocument doc = QJsonDocument::fromJson(jsonData);
+                        if (doc.isObject()) {
+                            QJsonObject obj = doc.object();
+                            QJsonArray choices = obj["choices"].toArray();
+                            for (const QJsonValue &choice : choices) {
+                                QJsonObject delta = choice.toObject()["delta"].toObject();
+                                if (delta.contains("content")) {
+                                    QString chatContent = delta["content"].toString();
+                                 // 构建新的 JSON 对象发送到客户端或处理
+                                    QJsonObject newObject = obj;
+                                    newObject.insert("type", "chat");
+                                    midchat.push_back(chatContent);
+                                    emit whathappen("openai:" + chatContent);
+                                    socket->write(QJsonDocument(newObject).toJson()+"LxTcpOverTag");
+                                    socket->waitForBytesWritten();
+                                }
+                            }
+                        }
+                    }else {
+                        query.prepare("INSERT INTO chatmessages(user_id, message_content, peoormac) VALUES (:user_id, :messagecontent, :p)");
+                        query.bindValue(":user_id", id);
+                        query.bindValue(":messagecontent", midchat);
+                        query.bindValue(":p", 1);
+                        query.exec();
+                        midchat.clear();
+                        qDebug()<<jsonData;
+
+                    }
+                }
+            }
+        }
     });
 }
 //发送历史询问记录
@@ -142,7 +168,6 @@ void tcpsocket::userneedhistorymess(QJsonObject)
     }else {
         qDebug()<<query.lastError();
     }
-
-    socket->write(QJsonDocument(data).toJson());
+    socket->write(QJsonDocument(data).toJson()+"LxTcpOverTag");
 }
 

@@ -28,6 +28,12 @@ private:
     void userlogin(QJsonObject o);
     void useraskcontent(QJsonObject o);
     void userneedhistorymess(QJsonObject);
+    typedef struct
+    {
+        int size;
+        QJsonDocument doc;
+
+    }tcpdata;
 private:
     QTcpSocket *socket;
     qintptr des;
@@ -36,7 +42,9 @@ private:
     QSqlQuery query;
     QByteArray date;
     int id;
+    QString account;
     int offsethistory=0;
+    QString midchat;
 signals:
   void disconnectsocket();
     void whathappen(QString);
