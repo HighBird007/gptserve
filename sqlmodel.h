@@ -17,10 +17,12 @@ public:
     void initsql(QString);
     bool userTryLogin(QString,QString);
     int getUserId();
-    void insertUserChat(QString);
+    void insertUserChat(QString,int);
     void updateUserUsage();
-    void insertGptChat(QString);
+    void insertGptChat(QString, int currentid);
     QJsonArray getHisMess(QJsonObject);
+    QJsonArray getChatLabels();
+    void createNewTag();
 private:
     QSqlDatabase db;
     int id=-1;

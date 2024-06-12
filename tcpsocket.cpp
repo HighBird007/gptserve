@@ -29,17 +29,21 @@ void tcpsocket::runwork()
         emit disconnectsocket();
     });
     manager=new QNetworkAccessManager;
-    if(!db.open())qDebug()<<db.lastError().text();
 }
 void tcpsocket::receiverequest(QJsonDocument doc){
     emit whathappen("new message");
     QJsonObject obj=doc.object();
+    qDebug()<<obj;
     QString type=obj["type"].toString();
     if(type=="login")userlogin(obj);
 
     if(type=="chat")useraskcontent(obj);
 
     if(type=="history")userneedhistorymess(obj);
+
+    if(type=="chatLabels")userNeedChatLabels();
+
+    if(type=="createNewTag")userCreateTag();
 
 }
 
@@ -52,23 +56,27 @@ void tcpsocket::userlogin(QJsonObject obj)
 
     QJsonObject login;
     login["type"]="login";
-    if(sql->userTryLogin(obj["account"].toString(),obj["password"].toString())){
+
+    if(sql->userTryLogin(obj["account"].toString(),obj["password"].toString()))
+    {
         id = sql->getUserId();
         account = obj["account"].toString();
         login["content"]=true;
-    }else {
-        login["content"]=false;
-    }
+    }else
+    login["content"]=false;
+
     socket->write(QJsonDocument(login).toJson()+"LxTcpOverTag");
 }
 //用户使用函数
 void tcpsocket::useraskcontent(QJsonObject obj)
 {
+    qDebug()<<obj;
     QString content = obj["data"].toObject()
                           ["messages"].toArray()
                                   .last().toObject()
                                   ["content"].toString();
-    sql->insertUserChat(content);
+    currentchatid=obj["chatId"].toInt();
+    sql->insertUserChat(content,currentchatid);
     emit whathappen("user say : "+content);
     QNetworkRequest r(QUrl("https://api.aigcapi.io/v1/chat/completions"));
     r.setHeader(QNetworkRequest::ContentTypeHeader,"application/json");
@@ -94,6 +102,8 @@ void tcpsocket::useraskcontent(QJsonObject obj)
                                  // 构建新的 JSON 对象发送到客户端或处理
                                     QJsonObject newObject = obj;
                                     newObject.insert("type", "chat");
+                                    newObject.insert("chatId",currentchatid);
+
                                     midchat.push_back(chatContent);
                                     socket->write(QJsonDocument(newObject).toJson()+"LxTcpOverTag");
                                     socket->waitForBytesWritten();
@@ -101,7 +111,7 @@ void tcpsocket::useraskcontent(QJsonObject obj)
                             }
                         }
                     }else {
-                        sql->insertGptChat(midchat);
+                        sql->insertGptChat(midchat,currentchatid);
                         emit whathappen("openai:" + midchat);
                         midchat.clear();
                     }
@@ -115,7 +125,21 @@ void tcpsocket::userneedhistorymess(QJsonObject o)
 {
     QJsonObject data;
     data["type"]="history";
+    data["chatId"]=o["chatId"].toInt();
     data["content"]=sql->getHisMess(o);
     socket->write(QJsonDocument(data).toJson()+"LxTcpOverTag");
+}
+
+void tcpsocket::userNeedChatLabels()
+{
+    QJsonObject data;
+    data["type"]="chatLabels";
+    data["content"]=sql->getChatLabels();
+    socket->write(QJsonDocument(data).toJson()+"LxTcpOverTag");
+}
+
+void tcpsocket::userCreateTag()
+{
+
 }
 

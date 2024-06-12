@@ -29,24 +29,19 @@ private:
     void userlogin(QJsonObject o);
     void useraskcontent(QJsonObject o);
     void userneedhistorymess(QJsonObject);
-    typedef struct
-    {
-        int size;
-        QJsonDocument doc;
-
-    }tcpdata;
+    void userNeedChatLabels();
+    void userCreateTag();
 private:
     QTcpSocket *socket;
     qintptr des;
-    QSqlDatabase db;
     QNetworkAccessManager *manager;
     QSqlQuery query;
     QByteArray date;
     int id;
     QString account;
-    int offsethistory=0;
     QString midchat;
     sqlmodel *sql;
+    int currentchatid;
 signals:
   void disconnectsocket();
     void whathappen(QString);

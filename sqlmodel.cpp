@@ -36,14 +36,16 @@ int sqlmodel::getUserId()
     return id;
 }
 
-void sqlmodel::insertUserChat(QString content)
+void sqlmodel::insertUserChat(QString content,int currentid)
 {
     QSqlQuery query(db);
-    query.prepare("insert into chatmessages(user_id , message_content ,peoormac)values(:user_id,:messagecontent,:p)");
-    query.bindValue(":user_id",id);
-    query.bindValue(":messagecontent",content);
-    query.bindValue(":p",0);
+    query.prepare("INSERT INTO chatmessages(user_id,chatLabelId, message_content, peoormac) VALUES (:user_id,:chatId,:messagecontent, :p)");
+    query.bindValue(":user_id", id);
+    query.bindValue(":messagecontent", content);
+    query.bindValue(":chatId", currentid);
+    query.bindValue(":p", 0);
     query.exec();
+    qDebug()<<query.lastError();
 }
 
 void sqlmodel::updateUserUsage()
@@ -62,29 +64,58 @@ void sqlmodel::updateUserUsage()
     }
 }
 
-void sqlmodel::insertGptChat(QString midchat)
+void sqlmodel::insertGptChat(QString midchat,int currentid)
 {   QSqlQuery query(db);
-    query.prepare("INSERT INTO chatmessages(user_id, message_content, peoormac) VALUES (:user_id, :messagecontent, :p)");
+    query.prepare("INSERT INTO chatmessages(user_id,chatLabelId, message_content, peoormac) VALUES (:user_id,:chatId,:messagecontent, :p)");
     query.bindValue(":user_id", id);
     query.bindValue(":messagecontent", midchat);
+    query.bindValue(":chatId", currentid);
     query.bindValue(":p", 1);
     query.exec();
 }
 
-QJsonArray sqlmodel::getHisMess(QJsonObject)
+QJsonArray sqlmodel::getHisMess(QJsonObject o)
 {    QSqlQuery query(db);
-    query.prepare("select message_content,peoormac from chatmessages where user_id = :user_id order by timestamp desc limit :p");
+    query.prepare("select chatLabelId,message_content,peoormac from chatmessages where user_id = :user_id and chatLabelId =:labelId order by timestamp desc ");
     query.bindValue(":user_id",id);
-    query.bindValue(":p",100);
+    query.bindValue(":labelId",o["chatId"].toInt());
     QJsonArray arr;
     query.exec();
+    qDebug()<<query.lastError();
         while(query.next()){
             QJsonObject o;
-            o["chat"]=query.value(0).toString();
-            o["peoormac"]=query.value(1).toInt();
+            o["chat"]=query.value(1).toString();
+            o["peoormac"]=query.value(2).toInt();
             arr.append(o);
+            qDebug()<<o;
         }
         return arr;
+
+}
+
+QJsonArray sqlmodel::getChatLabels()
+{
+    QJsonArray arr;
+    QSqlQuery query(db);
+    query.prepare("select userAccount,chatLabelId,chatLabelContent from userchatlabels where userAccount= :user_id order by timestamp desc");
+    query.bindValue(":user_id",account);
+    query.exec();
+    while(query.next()){
+        QJsonObject o;
+        o["chatLabelId"] = query.record().value(1).toInt();
+        o["chatLabelContent"] = query.record().value(2).toString();
+        arr.append(o);
+        qDebug()<<o;
+    }
+    return arr;
+}
+
+void sqlmodel::createNewTag()
+{
+    QSqlQuery query(db);
+    query.prepare("select max(chatLabelId) from userchatlabels where userAccount =:account");
+    query.bindValue(":userAccount",account);
+    query.exec();
 
 }
 
