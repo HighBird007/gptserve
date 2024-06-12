@@ -15,6 +15,7 @@
 #include <QNetworkRequest>
 #include <QDataStream>
 #include <QSqlRecord>
+#include <sqlmodel.h>
 class tcpsocket :  public QObject
 {
     Q_OBJECT
@@ -45,6 +46,7 @@ private:
     QString account;
     int offsethistory=0;
     QString midchat;
+    sqlmodel *sql;
 signals:
   void disconnectsocket();
     void whathappen(QString);

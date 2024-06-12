@@ -9,17 +9,11 @@ tcpsocket::tcpsocket(qintptr socketdescripter)
 void tcpsocket::runwork()
 {
     socket=new QTcpSocket;
-    numid++;
     socket->setSocketDescriptor(des);
     QString connectionName = QString::number(reinterpret_cast<quintptr>(QThread::currentThreadId()));
-    db=QSqlDatabase::addDatabase("QMYSQL",connectionName);
-    db.setHostName("139.196.150.195");
-    db.setDatabaseName("userlogin");
-    db.setUserName("LiuXin");
-    db.setPassword("a320926B!");
-    db.setPort(3306);
-    db.open();
-    emit whathappen(db.lastError().text());
+    sql =new sqlmodel(this);
+    sql->initsql(connectionName);
+
     connect(socket,&QTcpSocket::readyRead,this,[=](){
         QJsonDocument doc;
         date.append(socket->readAll());
@@ -34,7 +28,6 @@ void tcpsocket::runwork()
         emit whathappen("over");
         emit disconnectsocket();
     });
-
     manager=new QNetworkAccessManager;
     if(!db.open())qDebug()<<db.lastError().text();
 }
@@ -52,23 +45,16 @@ void tcpsocket::receiverequest(QJsonDocument doc){
 
 tcpsocket::~tcpsocket()
 {
-    qDebug()<<"delete myself";
-    numid--;
 }
 //用户登录函数
 void tcpsocket::userlogin(QJsonObject obj)
 {
-    query= QSqlQuery(db);
-    query.prepare("select u,account,password from admin where account = :account and password = :password");
-    query.bindValue(":account",obj["account"].toString());
-    query.bindValue(":password",obj["password"].toString());
-    query.exec();
-    emit whathappen(query.lastError().text());
+
     QJsonObject login;
     login["type"]="login";
-    if(query.next()){
-        id = query.record().value(0).toInt();
-        account = query.record().value(1).toString();
+    if(sql->userTryLogin(obj["account"].toString(),obj["password"].toString())){
+        id = sql->getUserId();
+        account = obj["account"].toString();
         login["content"]=true;
     }else {
         login["content"]=false;
@@ -82,27 +68,12 @@ void tcpsocket::useraskcontent(QJsonObject obj)
                           ["messages"].toArray()
                                   .last().toObject()
                                   ["content"].toString();
-    query.prepare("insert into chatmessages(user_id , message_content ,peoormac)values(:user_id,:messagecontent,:p)");
-    query.bindValue(":user_id",id);
-    query.bindValue(":messagecontent",content);
-    query.bindValue(":p",0);
-    query.exec();
+    sql->insertUserChat(content);
     emit whathappen("user say : "+content);
     QNetworkRequest r(QUrl("https://api.aigcapi.io/v1/chat/completions"));
     r.setHeader(QNetworkRequest::ContentTypeHeader,"application/json");
     r.setRawHeader("Authorization","sk-KoGGLsgRmJcnGbNR5412722fE3264a8e875eB5D177118dA3");
-    QString currentDate = QDate::currentDate().toString("yyyy-MM-dd");
-    QSqlQuery q(db);
-    q.prepare("INSERT INTO chat_usage (account,chat_count,DATE) "
-                  "VALUES (:user_id, 1, :date) "
-                  "ON DUPLICATE KEY UPDATE chat_count = chat_count + 1");
-    q.bindValue(":user_id", account);
-    q.bindValue(":date", currentDate);
-    if (!q.exec()) {
-        qDebug() << "Error incrementing chat usage:" << q.lastError().text();
-    } else {
-        qDebug() << "Chat usage incremented successfully for user" << account;
-    }
+    sql->updateUserUsage();
     QNetworkReply * reply = manager->post(r,QJsonDocument(obj["data"].toObject()).toJson());
     connect(reply,&QNetworkReply::readyRead,reply,[=](){
         if (reply) {
@@ -124,21 +95,15 @@ void tcpsocket::useraskcontent(QJsonObject obj)
                                     QJsonObject newObject = obj;
                                     newObject.insert("type", "chat");
                                     midchat.push_back(chatContent);
-                                    emit whathappen("openai:" + chatContent);
                                     socket->write(QJsonDocument(newObject).toJson()+"LxTcpOverTag");
                                     socket->waitForBytesWritten();
                                 }
                             }
                         }
                     }else {
-                        query.prepare("INSERT INTO chatmessages(user_id, message_content, peoormac) VALUES (:user_id, :messagecontent, :p)");
-                        query.bindValue(":user_id", id);
-                        query.bindValue(":messagecontent", midchat);
-                        query.bindValue(":p", 1);
-                        query.exec();
+                        sql->insertGptChat(midchat);
+                        emit whathappen("openai:" + midchat);
                         midchat.clear();
-                        qDebug()<<jsonData;
-
                     }
                 }
             }
@@ -146,28 +111,11 @@ void tcpsocket::useraskcontent(QJsonObject obj)
     });
 }
 //发送历史询问记录
-void tcpsocket::userneedhistorymess(QJsonObject)
+void tcpsocket::userneedhistorymess(QJsonObject o)
 {
     QJsonObject data;
     data["type"]="history";
-    query.prepare("select message_content,peoormac from chatmessages where user_id = :user_id order by timestamp desc limit :o , :p");
-    query.bindValue(":user_id",id);
-    query.bindValue(":o",offsethistory);
-    query.bindValue(":p",100);
-    QJsonArray arr;
-    if(query.exec()){
-        while(query.next()){
-            QJsonObject o;
-            o["chat"]=query.value(0).toString();
-            o["peoormac"]=query.value(1).toInt();
-            arr.append(o);
-            offsethistory++;
-        }
-        data["content"]=arr;
-        offsethistory++;
-    }else {
-        qDebug()<<query.lastError();
-    }
+    data["content"]=sql->getHisMess(o);
     socket->write(QJsonDocument(data).toJson()+"LxTcpOverTag");
 }
 

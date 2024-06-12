@@ -13,11 +13,13 @@ SOURCES += \
     main.cpp \
     servemodel.cpp \
     showmain.cpp \
+    sqlmodel.cpp \
     tcpsocket.cpp
 
 HEADERS += \
     servemodel.h \
     showmain.h \
+    sqlmodel.h \
     tcpsocket.h
 
 FORMS += \
