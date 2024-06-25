@@ -105,7 +105,6 @@ QJsonArray sqlmodel::getChatLabels()
         o["chatLabelId"] = query.record().value(1).toInt();
         o["chatLabelContent"] = query.record().value(2).toString();
         arr.append(o);
-        qDebug()<<o;
     }
     return arr;
 }
@@ -113,10 +112,25 @@ QJsonArray sqlmodel::getChatLabels()
 void sqlmodel::createNewTag()
 {
     QSqlQuery query(db);
-    query.prepare("select max(chatLabelId) from userchatlabels where userAccount =:account");
-    query.bindValue(":userAccount",account);
+    query.prepare("insert into userchatlabels(userAccount, chatLabelContent)values (:account,:content)");
+    query.bindValue(":content",QTime::currentTime().toString());
+    query.bindValue(":account",account);
     query.exec();
+    qDebug()<<query.lastError();
+}
 
+void sqlmodel::deleteTag(int i)
+{
+    qDebug()<<i;
+    QSqlQuery query(db);
+    query.prepare("delete from chatmessages where user_id =:user AND chatLabelId =:id");
+    query.bindValue(":user",id);
+    query.bindValue(":id",i);
+    query.exec();
+    query.prepare("delete from userchatlabels where userAccount =:user AND chatLabelId =:id");
+    query.bindValue(":user",account);
+    query.bindValue(":id",i);
+    query.exec();
 }
 
 

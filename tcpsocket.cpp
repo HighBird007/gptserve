@@ -17,10 +17,17 @@ void tcpsocket::runwork()
     connect(socket,&QTcpSocket::readyRead,this,[=](){
         QJsonDocument doc;
         date.append(socket->readAll());
-        doc=QJsonDocument::fromJson(date);
-        if(!doc.isNull()){
-            receiverequest(doc);
-            date.clear();
+        while(true){
+            int endJson = date.indexOf("LxTcpOverTag");
+            if(endJson==-1)return;
+            QByteArray jsonData  = date.left(endJson);
+            date.remove(endJson,strlen("LxTcpOverTag"));
+            doc=QJsonDocument::fromJson(jsonData);
+            if(!doc.isNull()){
+                qDebug()<<"tcp";
+                receiverequest(doc);
+                date.clear();
+            }
         }
     });
     connect(socket,&QTcpSocket::disconnected,this,[=](){
@@ -31,9 +38,8 @@ void tcpsocket::runwork()
     manager=new QNetworkAccessManager;
 }
 void tcpsocket::receiverequest(QJsonDocument doc){
-    emit whathappen("new message");
-    QJsonObject obj=doc.object();
-    qDebug()<<obj;
+     QJsonObject obj=doc.object();
+    emit whathappen(obj["type"].toString());
     QString type=obj["type"].toString();
     if(type=="login")userlogin(obj);
 
@@ -44,7 +50,7 @@ void tcpsocket::receiverequest(QJsonDocument doc){
     if(type=="chatLabels")userNeedChatLabels();
 
     if(type=="createNewTag")userCreateTag();
-
+    if(type=="deleteTag")userDeleteTag(obj);
 }
 
 tcpsocket::~tcpsocket()
@@ -56,7 +62,6 @@ void tcpsocket::userlogin(QJsonObject obj)
 
     QJsonObject login;
     login["type"]="login";
-
     if(sql->userTryLogin(obj["account"].toString(),obj["password"].toString()))
     {
         id = sql->getUserId();
@@ -64,13 +69,11 @@ void tcpsocket::userlogin(QJsonObject obj)
         login["content"]=true;
     }else
     login["content"]=false;
-
     socket->write(QJsonDocument(login).toJson()+"LxTcpOverTag");
 }
 //用户使用函数
 void tcpsocket::useraskcontent(QJsonObject obj)
 {
-    qDebug()<<obj;
     QString content = obj["data"].toObject()
                           ["messages"].toArray()
                                   .last().toObject()
@@ -140,6 +143,14 @@ void tcpsocket::userNeedChatLabels()
 
 void tcpsocket::userCreateTag()
 {
+    sql->createNewTag();
+    QJsonObject o;
+    o["type"] = "createNewTag";
+    socket->write(QJsonDocument(o).toJson());
+}
 
+void tcpsocket::userDeleteTag(QJsonObject o)
+{
+    sql->deleteTag(o["id"].toInt());
 }
 

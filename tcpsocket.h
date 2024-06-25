@@ -31,6 +31,7 @@ private:
     void userneedhistorymess(QJsonObject);
     void userNeedChatLabels();
     void userCreateTag();
+    void userDeleteTag(QJsonObject);
 private:
     QTcpSocket *socket;
     qintptr des;

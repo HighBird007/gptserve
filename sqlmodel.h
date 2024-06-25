@@ -23,6 +23,7 @@ public:
     QJsonArray getHisMess(QJsonObject);
     QJsonArray getChatLabels();
     void createNewTag();
+    void deleteTag(int i);
 private:
     QSqlDatabase db;
     int id=-1;
